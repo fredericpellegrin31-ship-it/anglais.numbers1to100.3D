@@ -22,8 +22,6 @@
         .star-wars-window { position: absolute; width: 100%; height: 100%; -webkit-mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%); mask-image: linear-gradient(to bottom, transparent 0%, black 15%, black 100%); }
         .crawl-container { position: absolute; bottom: 0; left: 50%; width: 300%; height: 100%; margin-left: -150%; perspective: 350px; perspective-origin: 50% 100%; }
         #crawl-text { position: absolute; width: 70%; left: 15%; top: 110%; color: #feda4a; font-family: "Franklin Gothic Medium", Arial, sans-serif; text-align: center; font-weight: 900; line-height: 1.1; transform: rotateX(20deg); transform-origin: 50% 100%; opacity: 0; }
-        
-        /* Vitesse accélérée : 12s au lieu de 25s */
         .animate-crawl { opacity: 1 !important; animation: starwars-ascend 12s linear forwards; }
         @keyframes starwars-ascend { 0% { top: 110%; transform: rotateX(20deg) translateY(0) scale(1.3); } 100% { top: -600%; transform: rotateX(20deg) translateY(-2000px) scale(0.01); } }
         #crawl-text p { margin-bottom: 1.5em; font-size: 15vw; letter-spacing: 2px; text-transform: uppercase; }
@@ -147,16 +145,32 @@
         // --- Logique du Jeu ---
 
         function getNumberWord(n) {
-            const units = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen"];
-            const tens = ["", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety"];
-            if (n < 20) return units[n];
-            return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? "-" + units[n % 10] : "");
+            const units = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"];
+            return units[n];
         }
 
         async function announceNumber(num) {
             const word = getNumberWord(num);
+            
+            // Fonction de synthèse vocale native (Fallback robuste)
+            const speakNative = () => {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const utter = new SpeechSynthesisUtterance(word);
+                    utter.lang = 'en-US'; 
+                    utter.rate = 0.8; 
+                    utter.pitch = 1.1; 
+                    window.speechSynthesis.speak(utter);
+                }
+            };
+
+            // Si aucune clé API n'est fournie (cas GitHub Pages), utiliser directement le natif
+            if (!apiKey) {
+                speakNative();
+                return;
+            }
+
             try {
-                // Requête Gemini TTS : Uniquement le mot
                 const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -173,11 +187,13 @@
                 if (b64) {
                     const audio = new Audio("data:audio/mp3;base64," + b64);
                     await audio.play();
+                } else {
+                    // Si l'API répond mais sans audio (ex: erreur quota), on bascule
+                    throw new Error("No audio data");
                 }
             } catch (e) {
-                const utter = new SpeechSynthesisUtterance(word);
-                utter.lang = 'en-US'; 
-                window.speechSynthesis.speak(utter);
+                // En cas d'erreur réseau ou autre, on utilise la voix du navigateur
+                speakNative();
             }
         }
 
@@ -195,41 +211,39 @@
             group.add(body);
 
             // Cockpit
-            const cockGeo = new THREE.BoxGeometry(0.3, 0.3, 0.7);
+            const cockGeo = new THREE.BoxGeometry(0.3, 0.3, 0.6);
             const cockpit = new THREE.Mesh(cockGeo, matGlass);
             cockpit.position.set(0, 0.22, -0.4);
             group.add(cockpit);
 
-            // Ailes plus petites et plus allongées (effet Star Fox)
+            // Ailes SNES
             const wingShape = new THREE.Shape();
             wingShape.moveTo(0, 0);
-            wingShape.lineTo(1.8, 0.2); // Moins large
-            wingShape.lineTo(1.5, 2.2); // Plus long vers l'arrière
-            wingShape.lineTo(0, 1.2);
+            wingShape.lineTo(2.5, 0);
+            wingShape.lineTo(2.0, 1.2);
+            wingShape.lineTo(0, 0.8);
             wingShape.lineTo(0, 0);
 
             const wingGeo = new THREE.ExtrudeGeometry(wingShape, { depth: 0.05, bevelEnabled: false });
             
             const rightWing = new THREE.Mesh(wingGeo, matBlue);
             rightWing.rotation.x = Math.PI/2;
-            rightWing.rotation.y = -0.15; // Légère inclinaison vers le bas
-            rightWing.position.set(0.2, 0, 0.3);
+            rightWing.position.set(0.3, 0, 0.5);
             group.add(rightWing);
 
             const leftWing = new THREE.Mesh(wingGeo, matBlue);
             leftWing.rotation.x = Math.PI/2;
-            leftWing.rotation.y = 0.15;
             leftWing.scale.x = -1;
-            leftWing.position.set(-0.2, 0, 0.3);
+            leftWing.position.set(-0.3, 0, 0.5);
             group.add(leftWing);
 
             // Flammes réacteurs
-            flameInner = new THREE.Mesh(new THREE.ConeGeometry(0.15, 1.2, 6), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
-            flameInner.rotation.x = -Math.PI/2; flameInner.position.z = 1.6; 
+            flameInner = new THREE.Mesh(new THREE.ConeGeometry(0.2, 1.5, 6), new THREE.MeshBasicMaterial({ color: 0xffff00 }));
+            flameInner.rotation.x = -Math.PI/2; flameInner.position.z = 1.4; 
             group.add(flameInner);
 
-            flameOuter = new THREE.Mesh(new THREE.ConeGeometry(0.35, 2.2, 6), new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.4 }));
-            flameOuter.rotation.x = -Math.PI/2; flameOuter.position.z = 2.0; 
+            flameOuter = new THREE.Mesh(new THREE.ConeGeometry(0.4, 2.5, 6), new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.4 }));
+            flameOuter.rotation.x = -Math.PI/2; flameOuter.position.z = 1.9; 
             group.add(flameOuter);
 
             return group;
@@ -268,7 +282,6 @@
 
             document.getElementById('btn-start').onclick = start;
             
-            // Contrôles tactiles améliorés
             const lZone = document.getElementById('left-zone');
             const rZone = document.getElementById('right-zone');
             
@@ -307,7 +320,7 @@
             obstacles.forEach(o => scene.remove(o)); 
             obstacles = [];
             
-            targetNumber = Math.floor(Math.random() * 99) + 1;
+            targetNumber = Math.floor(Math.random() * 12) + 1;
             await announceNumber(targetNumber);
             
             document.getElementById('target-display').innerText = "INTERCEPT TARGET";
@@ -315,19 +328,17 @@
         }
 
         function spawnWave() {
-            // Lanes plus écartées (7 au lieu de 5)
             const lanes = [-7, 0, 7], winIdx = Math.floor(Math.random()*3);
             lanes.forEach((x, i) => {
-                const val = (i === winIdx) ? targetNumber : Math.floor(Math.random()*99)+1;
+                const val = (i === winIdx) ? targetNumber : (Math.floor(Math.random()*12)+1);
                 const canv = document.createElement('canvas'); canv.width = 256; canv.height = 256; 
                 const ctx = canv.getContext('2d');
-                ctx.fillStyle = '#051025'; ctx.fillRect(0,0,256,256);
-                ctx.strokeStyle = '#00d4ff'; ctx.lineWidth = 15; ctx.strokeRect(10,10,236,236);
-                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 140px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillStyle = '#110022'; ctx.fillRect(0,0,256,256);
+                ctx.strokeStyle = '#ff00ff'; ctx.lineWidth = 15; ctx.strokeRect(10,10,236,236);
+                ctx.fillStyle = '#ffffff'; ctx.font = 'bold 160px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.fillText(val, 128, 128);
                 
-                const tex = new THREE.CanvasTexture(canv);
-                tex.anisotropy = maxAnisotropy;
+                const tex = new THREE.CanvasTexture(canv); tex.anisotropy = maxAnisotropy;
                 const box = new THREE.Mesh(new THREE.BoxGeometry(3.5, 3.5, 3.5), new THREE.MeshPhongMaterial({ map: tex }));
                 box.position.set(x, 1.75, -120); 
                 box.userData = { win: i === winIdx };
@@ -346,32 +357,31 @@
                 return; 
             }
             
-            const p = 1.0 + Math.sin(Date.now() * 0.05) * 0.15;
-            flameInner.scale.set(p, 0.8 + Math.random()*0.4, p);
-            flameOuter.scale.set(p*1.2, 0.6 + Math.random()*0.8, p*1.2);
+            const p = 1.0 + Math.sin(Date.now() * 0.1) * 0.1;
+            flameInner.scale.set(p, p, p); flameOuter.scale.set(p*1.2, p*1.2, p*1.2);
             
             const starArr = starsGeometry.attributes.position.array;
             for(let i=0; i < starArr.length; i+=3) {
-                starArr[i+2] += currentCubeSpeed * 4;
+                starArr[i+2] += currentCubeSpeed * 5;
                 if(starArr[i+2] > 10) starArr[i+2] = -240;
             }
             starsGeometry.attributes.position.needsUpdate = true;
 
             let targetRotZ = 0;
-            if(keyLeft && ship.position.x > -10) { ship.position.x -= 0.5; targetRotZ = 0.6; }
-            else if(keyRight && ship.position.x < 10) { ship.position.x += 0.5; targetRotZ = -0.6; }
+            if(keyLeft && ship.position.x > -10) { ship.position.x -= 0.5; targetRotZ = 0.4; }
+            else if(keyRight && ship.position.x < 10) { ship.position.x += 0.5; targetRotZ = -0.4; }
             ship.rotation.z += (targetRotZ - ship.rotation.z) * 0.1;
             camera.position.x += (ship.position.x*0.3 - camera.position.x) * 0.05;
             
             for(let i=obstacles.length-1; i>=0; i--) {
                 const b = obstacles[i];
                 b.position.z += currentCubeSpeed;
-                b.rotation.y += 0.02;
+                b.rotation.y += 0.01;
                 
                 if(ship.position.distanceTo(b.position) < 2.5) {
                     if(b.userData.win) { 
                         currentRound++; 
-                        currentCubeSpeed += 0.03; 
+                        currentCubeSpeed += 0.02; 
                         nextRound(); 
                     } else { 
                         die(); 
