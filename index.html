@@ -7,10 +7,11 @@
     <style>
         body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; background: #000; touch-action: none; color: white; }
         #interface { position: absolute; top: 20px; left: 20px; z-index: 10; pointer-events: none; display: none; }
+        /* Retour au bleu Star Fox */
         .stat-box { background: rgba(0, 0, 0, 0.8); padding: 10px 20px; border-radius: 5px; border-left: 5px solid #00d4ff; margin-bottom: 10px; }
         #target-display { font-size: 24px; color: #00d4ff; font-weight: bold; }
         #touch-controls { position: fixed; inset: 0; display: flex; z-index: 5; }
-        .touch-zone { flex: 1; height: 100%; }
+        .touch-zone { flex: 1; height: 100%; cursor: pointer; } /* Curseur pour indiquer l'interactivité */
         
         .overlay { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; background: rgba(0, 0, 0, 0.95); padding: 40px; border: 2px solid #00d4ff; z-index: 100; min-width: 300px; }
         button { padding: 15px 40px; font-size: 20px; cursor: pointer; background: transparent; color: #00d4ff; border: 2px solid #00d4ff; font-weight: bold; margin-top: 25px; transition: 0.2s; border-radius: 8px; pointer-events: auto; }
@@ -81,11 +82,14 @@
         let scene, camera, renderer, ship, starsGeometry, trailMesh;
         let obstacles = [];
         let currentRound = 1, totalRounds = 12, isGameOver = false, gameActive = false, targetNumber = null;
-        let keyLeft = false, keyRight = false;
         
-        // Vitesses ajustées : Départ très lent, accélération limitée
-        const INITIAL_SPEED = 0.08; 
-        const SPEED_INCREMENT = 0.02; // Augmentation plus faible par niveau
+        // --- NOUVEAU SYSTÈME DE DÉPLACEMENT ---
+        let currentLane = 1; // 0: Gauche, 1: Centre, 2: Droite
+        const LANE_POSITIONS = [-7, 0, 7]; // Positions X fixes des couloirs
+        
+        // Vitesse initiale réduite
+        const INITIAL_SPEED = 0.12; 
+        const SPEED_INCREMENT = 0.02; 
         let currentCubeSpeed = INITIAL_SPEED;
         let maxAnisotropy = 1;
 
@@ -195,33 +199,21 @@
         function createTrail() {
             const segments = MAX_TRAIL_POINTS - 1;
             const trailGeo = new THREE.BufferGeometry();
-            
-            // On définit 4 sommets par point de traînée pour faire un rectangle extrudé
-            // [Bas-Gauche, Bas-Droite, Haut-Droite, Haut-Gauche]
             const positions = new Float32Array(MAX_TRAIL_POINTS * 4 * 3); 
             trailGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
             
             const indices = [];
             for (let i = 0; i < segments; i++) {
-                const c = i * 4;     // courant
-                const n = (i + 1) * 4; // suivant
-                
-                // Face Gauche
+                const c = i * 4;
+                const n = (i + 1) * 4;
                 indices.push(c, n, c+3, n, n+3, c+3);
-                // Face Droite
                 indices.push(c+1, c+2, n+1, n+1, c+2, n+2);
-                // Face Supérieure (Le dessus du rectangle)
                 indices.push(c+3, n+3, c+2, n+3, n+2, c+2);
             }
             trailGeo.setIndex(indices);
 
-            const trailMat = new THREE.MeshPhongMaterial({ 
-                color: 0x00d4ff, 
-                emissive: 0x00d4ff,
-                emissiveIntensity: 0.5,
-                side: THREE.DoubleSide, 
-                transparent: true, 
-                opacity: 0.7
+            const trailMat = new THREE.MeshBasicMaterial({ 
+                color: 0x00d4ff, side: THREE.DoubleSide, transparent: true, opacity: 0.6
             });
             trailMesh = new THREE.Mesh(trailGeo, trailMat);
             trailMesh.frustumCulled = false;
@@ -230,28 +222,20 @@
 
         function updateTrail() {
             if (!ship || !trailMesh) return;
-            
-            // Enregistre la position arrière de la moto
             trailPoints.unshift(new THREE.Vector3(ship.position.x, ship.position.y, ship.position.z + 1.25));
             if (trailPoints.length > MAX_TRAIL_POINTS) trailPoints.pop();
 
             const positions = trailMesh.geometry.attributes.position.array;
-            const tW = 0.25; // Demi-largeur du rectangle
-            const tH = 0.85; // Hauteur du rectangle
+            const tW = 0.25; const tH = 0.85;
 
             for (let i = 0; i < trailPoints.length; i++) {
                 const p = trailPoints[i];
-                const zShift = i * currentCubeSpeed * 2.3; 
+                const zOffset = i * currentCubeSpeed * 2.3; 
                 const idx = i * 12;
-
-                // 0: Bas Gauche
-                positions[idx] = p.x - tW; positions[idx + 1] = 0; positions[idx + 2] = p.z + zShift;
-                // 1: Bas Droite
-                positions[idx + 3] = p.x + tW; positions[idx + 4] = 0; positions[idx + 5] = p.z + zShift;
-                // 2: Haut Droite
-                positions[idx + 6] = p.x + tW; positions[idx + 7] = tH; positions[idx + 8] = p.z + zShift;
-                // 3: Haut Gauche
-                positions[idx + 9] = p.x - tW; positions[idx + 10] = tH; positions[idx + 11] = p.z + zShift;
+                positions[idx] = p.x - tW; positions[idx + 1] = 0.1; positions[idx + 2] = p.z + zOffset;
+                positions[idx + 3] = p.x + tW; positions[idx + 4] = 0.1; positions[idx + 5] = p.z + zOffset;
+                positions[idx + 6] = p.x + tW; positions[idx + 7] = tH; positions[idx + 8] = p.z + zOffset;
+                positions[idx + 9] = p.x - tW; positions[idx + 10] = tH; positions[idx + 11] = p.z + zOffset;
             }
             trailMesh.geometry.attributes.position.needsUpdate = true;
             trailMesh.geometry.computeVertexNormals();
@@ -271,32 +255,41 @@
                 document.body.appendChild(renderer.domElement);
                 
                 maxAnisotropy = renderer.capabilities.getMaxAnisotropy();
-                scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-                const light = new THREE.DirectionalLight(0xffffff, 1.2); light.position.set(5, 10, 5); scene.add(light);
+                scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+                const light = new THREE.DirectionalLight(0xffffff, 1); light.position.set(5, 10, 5); scene.add(light);
                 
-                ship = createTronBike(); ship.position.y = 0.65; scene.add(ship);
+                ship = createTronBike(); ship.position.y = 0.8; scene.add(ship);
                 createTrail();
                 
                 const grid = new THREE.GridHelper(800, 100, 0x00d4ff, 0x001133);
                 scene.add(grid);
                 
                 starsGeometry = new THREE.BufferGeometry();
-                const starPos = []; for(let i=0; i<1200; i++) starPos.push((Math.random()-0.5)*200, (Math.random()-0.5)*150, -Math.random()*300);
+                const starPos = []; for(let i=0; i<1500; i++) starPos.push((Math.random()-0.5)*200, (Math.random()-0.5)*150, -Math.random()*300);
                 starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starPos, 3));
-                scene.add(new THREE.Points(starsGeometry, new THREE.PointsMaterial({color: 0xffffff, size: 0.2})));
+                scene.add(new THREE.Points(starsGeometry, new THREE.PointsMaterial({color: 0xffffff, size: 0.15})));
 
                 document.getElementById('btn-start').onclick = start;
                 
-                const lZone = document.getElementById('left-zone'); const rZone = document.getElementById('right-zone');
-                if (lZone) {
-                    lZone.onpointerdown = (e) => { e.preventDefault(); keyLeft = true; }; lZone.onpointerup = () => keyLeft = false;
-                }
-                if (rZone) {
-                    rZone.onpointerdown = (e) => { e.preventDefault(); keyRight = true; }; rZone.onpointerup = () => keyRight = false;
-                }
+                // Contrôles par zones discrètes (Couloirs)
+                const lZone = document.getElementById('left-zone');
+                const rZone = document.getElementById('right-zone');
                 
-                window.onkeydown = (e) => { if(e.key === "ArrowLeft") keyLeft = true; if(e.key === "ArrowRight") keyRight = true; };
-                window.onkeyup = (e) => { if(e.key === "ArrowLeft") keyLeft = false; if(e.key === "ArrowRight") keyRight = false; };
+                // Événements tactiles et souris
+                lZone.onpointerdown = (e) => { 
+                    e.preventDefault(); 
+                    if(currentLane > 0) currentLane--; 
+                };
+                rZone.onpointerdown = (e) => { 
+                    e.preventDefault(); 
+                    if(currentLane < 2) currentLane++; 
+                };
+
+                // Événements Clavier
+                window.addEventListener('keydown', (e) => {
+                    if(e.key === "ArrowLeft" && currentLane > 0) currentLane--;
+                    if(e.key === "ArrowRight" && currentLane < 2) currentLane++;
+                });
 
                 animate();
             } catch (e) { console.error(e); }
@@ -322,7 +315,7 @@
 
             announceNumber(targetNumber);
             document.getElementById('target-display').innerText = "INTERCEPTE LE CODE !";
-            setTimeout(spawnWave, 700);
+            setTimeout(spawnWave, 600);
         }
 
         function spawnWave() {
@@ -338,8 +331,8 @@
                 ctx.fillText(val, 128, 128);
                 
                 const tex = new THREE.CanvasTexture(canv); tex.anisotropy = maxAnisotropy;
-                const box = new THREE.Mesh(new THREE.BoxGeometry(3.8, 3.8, 3.8), new THREE.MeshPhongMaterial({ map: tex }));
-                box.position.set(x, 1.9, -130); 
+                const box = new THREE.Mesh(new THREE.BoxGeometry(3.5, 3.5, 3.5), new THREE.MeshPhongMaterial({ map: tex }));
+                box.position.set(x, 1.75, -120); 
                 box.userData = { win: (i === winIdx || val === targetNumber) }; 
                 scene.add(box); obstacles.push(box);
             });
@@ -357,11 +350,16 @@
             }
             starsGeometry.attributes.position.needsUpdate = true;
 
-            let targetRotZ = 0;
-            if(keyLeft && ship.position.x > -10.5) { ship.position.x -= 0.5; targetRotZ = 0.4; }
-            else if(keyRight && ship.position.x < 10.5) { ship.position.x += 0.5; targetRotZ = -0.4; }
-            ship.rotation.z += (targetRotZ - ship.rotation.z) * 0.12;
-            camera.position.x += (ship.position.x*0.3 - camera.position.x) * 0.08;
+            // Déplacement fluide vers le couloir cible
+            const targetX = LANE_POSITIONS[currentLane];
+            // Interpolation pour mouvement doux
+            ship.position.x += (targetX - ship.position.x) * 0.15;
+            
+            // Inclinaison (Roll) basée sur la différence de position
+            // Plus on est loin de la cible, plus on penche
+            ship.rotation.z = (ship.position.x - targetX) * 0.1;
+            
+            camera.position.x += (ship.position.x*0.35 - camera.position.x) * 0.1;
             
             updateTrail();
 
@@ -370,7 +368,7 @@
                 b.position.z += currentCubeSpeed * 2.8; 
                 b.rotation.y += 0.015;
                 
-                if(ship.position.distanceTo(b.position) < 2.6) {
+                if(ship.position.distanceTo(b.position) < 2.5) {
                     if(b.userData.win) { 
                         currentRound++; 
                         currentCubeSpeed += SPEED_INCREMENT; 
@@ -398,12 +396,13 @@
             isGameOver = true; 
             document.getElementById('victory-screen').style.display = 'block'; 
             document.getElementById('fireworks-canvas').style.display = 'block'; 
-            const launch = () => { if(isGameOver) { spawnFirework(); setTimeout(launch, 450); } }; 
+            const launch = () => { if(isGameOver) { spawnFirework(); setTimeout(launch, 400); } }; 
             launch(); 
         }
 
         function resetGame() {
             isGameOver = false; gameActive = true; currentRound = 1; 
+            currentLane = 1; // Reset position centrale
             currentCubeSpeed = INITIAL_SPEED; 
             document.getElementById('game-over').style.display = 'none';
             document.getElementById('victory-screen').style.display = 'none';
@@ -412,10 +411,12 @@
             document.getElementById('fireworks-canvas').style.display = 'none';
             obstacles.forEach(o => scene.remove(o)); obstacles = []; particles = []; 
             trailPoints.length = 0;
-            ship.position.x = 0; nextRound();
+            ship.position.x = 0; ship.rotation.z = 0;
+            nextRound();
         }
 
         if (document.readyState === 'complete') { init(); } else { window.addEventListener('load', init); }
     </script>
 </body>
 </html>
+
